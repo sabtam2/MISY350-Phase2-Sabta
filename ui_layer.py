@@ -106,3 +106,230 @@ def render_login_page():
             else:
                 st.error(message)
 
+def render_owner_home():
+    inventory = st.session_state["inventory"]
+    sales = st.session_state["sales"]
+    user = st.session_state["user"]
+
+    st.title("Owner Dashboard")
+    st.markdown("Welcome back, " + user.username + ".")
+    st.divider()
+
+    total_units = 0
+    for item in inventory:
+        total_units = total_units + item["stock"]
+
+    col1, col2, col3, col4 = st.columns(4)
+    col1.metric("Products", len(inventory))
+    col2.metric("Total Units", total_units)
+    col3.metric("Inventory Value", "$" + str(service.get_total_inventory_value(inventory)))
+    col4.metric("Total Sales", len(sales))
+
+    st.divider()
+
+    col1, col2 = st.columns(2)
+    with col1:
+        with st.container(border=True):
+            st.markdown("### Catalog")
+            st.caption("View and search all products.")
+            if st.button("Open Catalog", use_container_width=True, key="go_catalog"):
+                st.session_state["page"] = "catalog"
+                st.rerun()
+
+        with st.container(border=True):
+            st.markdown("### Edit / Restock")
+            st.caption("Update prices and stock levels.")
+            if st.button("Open Editor", use_container_width=True, key="go_edit"):
+                st.session_state["page"] = "edit"
+                st.rerun()
+
+    with col2:
+        with st.container(border=True):
+            st.markdown("### Add Product")
+            st.caption("Add a new item to the catalog.")
+            if st.button("Add Product", use_container_width=True, key="go_add"):
+                st.session_state["page"] = "add"
+                st.rerun()
+
+        with st.container(border=True):
+            st.markdown("### Remove Product")
+            st.caption("Delete a product from the catalog.")
+            if st.button("Remove Product", use_container_width=True, key="go_delete"):
+                st.session_state["page"] = "delete"
+                st.rerun()
+
+    st.divider()
+
+    col1, col2 = st.columns(2)
+    with col1:
+        with st.container(border=True):
+            st.markdown("### Sales Log")
+            st.caption("Review all transactions.")
+            if st.button("View Sales Log", use_container_width=True, key="go_sales"):
+                st.session_state["page"] = "sales"
+                st.rerun()
+
+    with col2:
+        with st.container(border=True):
+            st.markdown("### Shop Assistant")
+            st.caption("Ask the AI assistant questions.")
+            if st.button("Open Assistant", use_container_width=True, key="go_ai_owner"):
+                st.session_state["page"] = "assistant"
+                st.rerun()
+
+
+    st.divider()
+    low_items = service.get_low_stock_items(inventory)
+    if len(low_items) > 0:
+        st.markdown("**Low Stock Alerts**")
+        for item in low_items:
+            st.warning(item["name"] + " - " + str(item["stock"]) + " units remaining")
+
+
+def render_owner_catalog():
+    inventory = st.session_state["inventory"]
+
+    if st.button("Back", key="catalog_back"):
+        st.session_state["page"] = "home"
+        st.rerun()
+
+    st.header("Product Catalog")
+
+    search = st.text_input("Search by name", key="owner_search")
+
+    st.divider()
+
+    total_units = 0
+    for item in inventory:
+        total_units = total_units + item["stock"]
+
+    low_items = service.get_low_stock_items(inventory)
+
+    col1, col2, col3 = st.columns(3)
+    col1.metric("Total Products", len(inventory))
+    col2.metric("Total Units", total_units)
+    col3.metric("Critically Low", len(low_items))
+    st.divider()
+
+    for item in inventory:
+        # filter by search if something was typed
+        if search != "":
+            if search.lower() not in item["name"].lower():
+                continue
+
+        with st.container(border=True):
+            c1, c2, c3, c4, c5 = st.columns([3, 2, 2, 2, 2])
+            c1.markdown("**" + item["name"] + "**")
+            c2.markdown(item.get("category", "Other"))
+            c3.markdown("$" + str(item["price"]))
+            c4.markdown("Stock: " + str(item["stock"]))
+
+            if item["stock"] == 0:
+                c5.error("Out of Stock")
+            elif item["stock"] < 5:
+                c5.warning("Low")
+            else:
+                c5.success("OK")
+
+
+def render_owner_add():
+    inventory = st.session_state["inventory"]
+
+    if st.button("Back", key="add_back"):
+        st.session_state["page"] = "home"
+        st.rerun()
+
+    st.header("Add a New Product")
+
+    with st.container(border=True):
+        st.subheader("Product Details")
+
+        col1, col2 = st.columns(2)
+        with col1:
+            new_name = st.text_input("Product Name", key="new_product_name")
+            new_price = st.number_input("Price ($)", min_value=0.01, value=1.00, step=0.25, key="new_product_price")
+        with col2:
+            new_stock = st.number_input("Initial Stock", min_value=0, value=10, step=1, key="new_product_stock")
+            new_category = st.selectbox("Category", ["Bread", "Pastry", "Dessert", "Beverage", "Other"], key="new_product_category")
+
+        add_btn = st.button("Add Product", type="primary", use_container_width=True, key="add_product_btn")
+
+    if add_btn:
+        new_item, message = service.add_item(inventory, new_name, new_price, new_stock, new_category)
+        if new_item:
+            with st.spinner("Adding product..."):
+                save_data(Inventory_Path, inventory)
+                time.sleep(1)
+            st.success(message)
+            st.session_state["page"] = "home"
+            st.rerun()
+        else:
+            st.error(message)
+
+
+def render_owner_edit():
+    inventory = st.session_state["inventory"]
+
+    if st.button("Back", key="edit_back"):
+        st.session_state["page"] = "home"
+        st.rerun()
+
+    st.header("Edit or Restock a Product")
+
+    with st.container(border=True):
+        st.subheader("Select a Product")
+
+        edit_item = st.selectbox(
+            "Choose product to edit",
+            options=inventory,
+            format_func=lambda x: x["name"] + " (Stock: " + str(x["stock"]) + ")",
+            key="edit_item_select"
+        )
+
+        st.divider()
+        st.subheader("Update Details")
+
+        col1, col2 = st.columns(2)
+        with col1:
+            updated_price = st.number_input(
+                "New Price ($)",
+                min_value=0.01,
+                value=float(edit_item["price"]),
+                step=0.25,
+                key="edit_price_" + str(edit_item["item_id"])
+            )
+            add_stock = st.number_input(
+                "Units to Add to Stock",
+                min_value=0,
+                value=0,
+                step=1,
+                key="edit_stock_" + str(edit_item["item_id"])
+            )
+        with col2:
+            categories = ["Bread", "Pastry", "Dessert", "Beverage", "Other"]
+            current_cat = edit_item.get("category", "Other")
+            if current_cat in categories:
+                cat_index = categories.index(current_cat)
+            else:
+                cat_index = 0
+
+            updated_category = st.selectbox(
+                "Category",
+                categories,
+                index=cat_index,key="edit_cat_" + str(edit_item["item_id"])
+            )
+            st.markdown("**Current stock:** " + str(edit_item["stock"]) + " units")
+
+        update_btn = st.button("Save Changes", type="primary", use_container_width=True, key="update_btn")
+
+    if update_btn:
+        success, message = service.update_item(inventory, edit_item["item_id"], updated_price, add_stock, updated_category)
+        if success:
+            with st.spinner("Saving..."):
+                save_data(Inventory_Path, inventory)
+                time.sleep(1)
+            st.success(message)
+            st.session_state["page"] = "home"
+            st.rerun()
+        else:
+            st.error(message)
