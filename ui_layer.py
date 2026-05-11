@@ -333,3 +333,290 @@ def render_owner_edit():
             st.rerun()
         else:
             st.error(message)
+
+def render_owner_delete():
+    inventory = st.session_state["inventory"]
+
+    if st.button("Back", key="delete_back"):
+        st.session_state["page"] = "home"
+        st.rerun()
+
+    st.header("Remove a Product")
+
+    with st.container(border=True):
+        st.subheader("Select Product to Remove")
+
+        delete_item = st.selectbox(
+            "Choose product",
+            options=inventory,
+            format_func=lambda x: x["name"] + " (Stock: " + str(x["stock"]) + ")",
+            key="delete_item_select"
+        )
+
+        col1, col2 = st.columns(2)
+        col1.markdown("**Price:** $" + str(delete_item["price"]))
+        col2.markdown("**Stock remaining:** " + str(delete_item["stock"]))
+
+        st.warning("This will permanently remove " + delete_item["name"] + " from the catalog.")
+        confirm = st.checkbox("I confirm I want to delete this product.", key="confirm_delete")
+        delete_btn = st.button("Delete Product", type="primary", use_container_width=True, key="delete_btn")
+
+    if delete_btn:
+        if confirm == False:
+            st.error("Please check the confirmation box first.")
+        else:
+            success, message = service.delete_item(inventory, delete_item["item_id"])
+            if success:
+                with st.spinner("Removing..."):
+                    save_data(Inventory_Path, inventory)
+                    time.sleep(1)
+                st.success(message)
+                st.session_state["page"] = "home"
+                st.rerun()
+            else:
+                st.error(message)
+
+
+def render_owner_sales():
+    sales = st.session_state["sales"]
+
+    if st.button("Back", key="sales_back"):
+        st.session_state["page"] = "home"
+        st.rerun()
+
+    st.header("Sales Log")
+
+    if len(sales) == 0:
+        st.info("No sales have been logged yet.")
+        return
+
+    total_revenue = 0
+    for sale in sales:
+        total_revenue = total_revenue + sale["total"]
+
+    col1, col2 = st.columns(2)
+    col1.metric("Total Transactions", len(sales))
+    col2.metric("Total Revenue", "$" + str(round(total_revenue, 2)))
+    st.divider()
+
+    for sale in reversed(sales):
+        with st.container(border=True):
+            c1, c2, c3, c4 = st.columns([3, 2, 2, 3])
+            c1.markdown("**" + sale["item"] + "**")
+            c2.markdown("Qty: " + str(sale["quantity"]))
+            c3.markdown("$" + str(sale["total"]))
+            c4.markdown(sale["logged_by"] + " - " + sale["date"])
+
+
+# employee pages
+
+def render_employee_home():
+    inventory = st.session_state["inventory"]
+    sales = st.session_state["sales"]
+    user = st.session_state["user"]
+
+    st.title("Welcome, " + user.username + "!")
+    st.markdown("What would you like to do today?")
+    st.divider()
+
+    my_sales = service.get_sales_by_employee(sales, user.username)
+
+    my_revenue = 0
+    for sale in my_sales:
+        my_revenue = my_revenue + sale["total"]
+
+    col1, col2 = st.columns(2)
+    col1.metric("My Sales", len(my_sales))
+    col2.metric("My Revenue", "$" + str(round(my_revenue, 2)))
+
+    st.divider()
+
+    col1, col2, col3 = st.columns(3)
+    with col1:
+        with st.container(border=True):
+            st.markdown("### Log a Sale")
+            st.caption("Record items sold and update stock.")
+            if st.button("Log a Sale", use_container_width=True, key="go_log_sale"):
+                st.session_state["page"] = "log_sale"
+                st.rerun()
+
+    with col2:
+        with st.container(border=True):
+            st.markdown("### View Catalog")
+            st.caption("Browse products and flag low items.")
+            if st.button("View Catalog", use_container_width=True, key="go_emp_catalog"):
+                st.session_state["page"] = "emp_catalog"
+                st.rerun()
+
+    with col3:
+        with st.container(border=True):
+            st.markdown("### Shop Assistant")
+            st.caption("Ask the AI assistant a question.")
+            if st.button("Open Assistant", use_container_width=True, key="go_ai_emp"):
+                st.session_state["page"] = "assistant"
+                st.rerun()
+
+    if len(my_sales) > 0:
+        st.divider()
+        st.markdown("**My Recent Sales**")
+        # show last 5 sales
+        recent = my_sales[-5:]
+        for sale in reversed(recent):
+            with st.container(border=True):
+                c1, c2, c3 = st.columns([3, 2, 3])
+                c1.markdown("**" + sale["item"] + "**")
+                c2.markdown("$" + str(sale["total"]))
+                c3.markdown(sale["date"])
+
+
+def render_employee_log_sale():
+    inventory = st.session_state["inventory"]
+    sales = st.session_state["sales"]
+    user = st.session_state["user"]
+
+    if st.button("Back", key="log_sale_back"):
+        st.session_state["page"] = "home"
+        st.rerun()
+
+    st.header("Log a Sale")
+
+    # get items that are in stock
+    available = []
+    for item in inventory:
+        if item["stock"] > 0:
+            available.append(item)
+
+    left_col, right_col = st.columns([1.4, 1])
+
+    with left_col:
+        if len(available) == 0:
+            st.error("No items currently in stock.")
+        else:
+            with st.container(border=True):
+                st.subheader("Sale Details")
+
+                selected_item = st.selectbox(
+                    "Select an Item",
+                    options=available,
+                    format_func=lambda x: x["name"] + " (Stock: " + str(x["stock"]) + ")",
+                    key="sale_item_select"
+                )
+                quantity = st.number_input("Quantity", min_value=1, step=1, key="sale_quantity")
+
+                st.markdown("**Unit price:** $" + str(selected_item["price"]))
+                st.markdown("**Sale total:** $" + str(round(selected_item["price"] * quantity, 2)))
+
+                if st.button("Create Order", type="primary", use_container_width=True, key="create_order_btn"):
+                    new_sale, message = service.place_sale(
+                        inventory, sales, selected_item["item_id"], quantity, user.username
+                    )
+                    if new_sale:
+                        with st.spinner("Creating order..."):
+                            save_data(Inventory_Path, inventory)
+                            save_data(Sales_path, sales)
+                            time.sleep(1)
+                        st.balloons()
+                        time.sleep(2)
+                        st.session_state["page"] = "home"
+                        st.rerun()
+                    else:
+                        st.error(message)
+
+    with right_col:
+        st.subheader("Low Stock Items")
+        low_items = service.get_low_stock_items(inventory)
+        if len(low_items) == 0:
+            st.success("All items stocked OK.")
+        else:
+            for item in low_items:
+                st.warning(item["name"] + ": " + str(item["stock"]) + " left")
+
+
+def render_employee_catalog():
+    inventory = st.session_state["inventory"]
+
+    if st.button("Back", key="emp_catalog_back"):
+        st.session_state["page"] = "home"
+        st.rerun()
+
+    st.header("Current Catalog")
+
+    search = st.text_input("Search by name", key="emp_search")
+
+    st.divider()
+
+    total_units = 0
+    for item in inventory:
+        total_units = total_units + item["stock"]
+
+    low_items = service.get_low_stock_items(inventory)
+
+    col1, col2, col3 = st.columns(3)
+    col1.metric("Total Products", len(inventory))
+    col2.metric("Total Units", total_units)
+    col3.metric("Low / Flagged", len(low_items))
+    st.divider()
+
+    for item in inventory:
+        if search != "":
+            if search.lower() not in item["name"].lower():
+                continue
+
+        with st.container(border=True):
+            c1, c2, c3, c4, c5 = st.columns([3, 2, 2, 2, 2])
+            c1.markdown("**" + item["name"] + "**")
+            c2.markdown(item.get("category", "Other"))
+            c3.markdown("$" + str(item["price"]))
+            c4.markdown("Stock: " + str(item["stock"]))
+
+            if item["stock"] == 0:
+                c5.error("Out of Stock")
+            elif item["stock"] < 5:
+                c5.warning("Low")
+            elif item.get("flagged") == True:
+                c5.warning("Flagged")
+            else:
+                c5.success("OK")
+
+            # flag button
+            if item.get("flagged") == True:
+                flag_label = "Unflag"
+            else:
+                flag_label = "Flag"
+
+            if st.button(flag_label, key="flag_" + str(item["item_id"])):
+                service.toggle_flag(inventory, item["item_id"])
+                save_data(Inventory_Path, inventory)
+                st.rerun()
+
+
+
+def render_assistant_page(bot):
+    st.header("Shop Assistant")
+    st.markdown("Ask me anything about the shop inventory or sales.")
+    st.divider()
+
+    with st.container(height=400, border=True):
+        for message in st.session_state["messages"]:
+            with st.chat_message(message["role"]):
+                st.markdown(message["content"])
+
+    user_input = st.chat_input("Ask a question...")
+
+    if user_input:
+        st.session_state["messages"].append({"role": "user", "content": user_input})
+
+        with st.spinner("Thinking..."):
+            try:
+                ai_response = bot.get_ai_response(st.session_state["messages"])
+            except Exception as e:
+                ai_response = "Sorry, I could not connect to the AI. Error: " + str(e)
+
+        st.session_state["messages"].append({"role": "assistant", "content": ai_response})
+        st.rerun()
+
+    if st.button("Clear Chat", key="clear_chat_btn"):
+        st.session_state["messages"] = [
+            {"role": "assistant", "content": "Hi! How can I help you today?"}
+        ]
+        st.rerun()
