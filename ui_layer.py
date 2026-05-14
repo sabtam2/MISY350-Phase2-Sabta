@@ -408,8 +408,6 @@ def render_owner_sales():
             c4.markdown(sale["logged_by"] + " - " + sale["date"])
 
 
-# employee pages
-
 def render_employee_home():
     inventory = st.session_state["inventory"]
     sales = st.session_state["sales"]
@@ -459,7 +457,7 @@ def render_employee_home():
     if len(my_sales) > 0:
         st.divider()
         st.markdown("**My Recent Sales**")
-        # show last 5 sales
+       
         recent = my_sales[-5:]
         for sale in reversed(recent):
             with st.container(border=True):
@@ -480,7 +478,6 @@ def render_employee_log_sale():
 
     st.header("Log a Sale")
 
-    # get items that are in stock
     available = []
     for item in inventory:
         if item["stock"] > 0:
