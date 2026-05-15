@@ -9,4 +9,4 @@
   {"item_id": 8, "name": "Lemon Tart",        "price": 5.25, "stock": 2,  "category": "Dessert", "flagged": true},
   {"item_id": 9, "name": "Almond Croissant",  "price": 4.75, "stock": 10, "category": "Pastry",  "flagged": false},
   {"item_id": 10,"name": "Baguette",          "price": 3.50, "stock": 7,  "category": "Bread",   "flagged": false}
-] 
+]
